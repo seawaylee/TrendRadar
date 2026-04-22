@@ -112,25 +112,23 @@ class AIAnalyzer:
         
         # 打印配置信息方便调试
         model = self.ai_config.get("MODEL", "unknown")
-        api_key = self.client.api_key or ""
-        api_base = self.ai_config.get("API_BASE", "")
-        masked_key = f"{api_key[:5]}******" if len(api_key) >= 5 else "******"
         model_display = model.replace("/", "/\u200b") if model else "unknown"
 
         print(f"[AI] 模型: {model_display}")
-        print(f"[AI] Key : {masked_key}")
-
-        if api_base:
-            print(f"[AI] 接口: 存在自定义 API 端点")
+        if self.client.api_base:
+            print("[AI] 接口: 使用共享 llm_client + 自定义 API 端点")
+        else:
+            print("[AI] 接口: 使用共享 llm_client provider 链路")
 
         timeout = self.ai_config.get("TIMEOUT", 120)
         max_tokens = self.ai_config.get("MAX_TOKENS", 5000)
         print(f"[AI] 参数: timeout={timeout}, max_tokens={max_tokens}")
 
-        if not self.client.api_key:
+        valid, error = self.client.validate_config()
+        if not valid:
             return AIAnalysisResult(
                 success=False,
-                error="未配置 AI API Key，请在 config.yaml 或环境变量 AI_API_KEY 中设置"
+                error=error,
             )
 
         # 准备新闻内容并获取统计数据

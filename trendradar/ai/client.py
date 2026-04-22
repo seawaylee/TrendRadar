@@ -2,36 +2,98 @@
 """
 AI 客户端模块
 
-基于 LiteLLM 的统一 AI 模型接口
-支持 100+ AI 提供商（OpenAI、DeepSeek、Gemini、Claude、国内模型等）
+统一接入共享 llm_client，复用 core-common-tools 的 provider 链路。
 """
 
-import os
-from typing import Any, Dict, List
+from __future__ import annotations
 
-from litellm import completion
+import importlib.util
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
+
+
+_SHARED_LLM_CALLABLE: Optional[Callable[..., str]] = None
+_SHARED_LLM_IMPORT_ERROR: Optional[str] = None
+
+
+def _get_shared_llm_callable() -> Optional[Callable[..., str]]:
+    global _SHARED_LLM_CALLABLE, _SHARED_LLM_IMPORT_ERROR
+    if _SHARED_LLM_CALLABLE is not None:
+        return _SHARED_LLM_CALLABLE
+    if _SHARED_LLM_IMPORT_ERROR is not None:
+        return None
+
+    client_path = (
+        Path(__file__).resolve().parents[3]
+        / "core-common-tools"
+        / "core_common_tools"
+        / "llm_client.py"
+    )
+    try:
+        spec = importlib.util.spec_from_file_location("trendradar_shared_llm_client", client_path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"无法加载共享 LLM client: {client_path}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        llm_call = getattr(module, "chat_completion_or_raise", None)
+        if not callable(llm_call):
+            raise ImportError(f"共享 LLM client 缺少 chat_completion_or_raise: {client_path}")
+        _SHARED_LLM_CALLABLE = llm_call
+        return _SHARED_LLM_CALLABLE
+    except Exception as exc:
+        _SHARED_LLM_IMPORT_ERROR = str(exc)
+        return None
+
+
+def _normalize_message_content(content: Any) -> str:
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts: List[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                text = str(item.get("text", "") or "").strip()
+                if text:
+                    parts.append(text)
+            else:
+                text = str(item or "").strip()
+                if text:
+                    parts.append(text)
+        return "\n".join(parts).strip()
+    return str(content or "").strip()
+
+
+def _messages_to_prompt(messages: List[Dict[str, Any]]) -> tuple[str, str]:
+    system_parts: List[str] = []
+    prompt_parts: List[str] = []
+
+    for message in messages or []:
+        role = str(message.get("role", "user") or "user").strip().lower()
+        content = _normalize_message_content(message.get("content", ""))
+        if not content:
+            continue
+
+        if role in {"system", "developer"}:
+            system_parts.append(content)
+            continue
+
+        if role == "user" and not prompt_parts:
+            prompt_parts.append(content)
+            continue
+
+        prompt_parts.append(f"[{role}]\n{content}")
+
+    system_prompt = "\n\n".join(system_parts).strip()
+    prompt = "\n\n".join(prompt_parts).strip()
+    return system_prompt, prompt
 
 
 class AIClient:
-    """统一的 AI 客户端（基于 LiteLLM）"""
+    """统一的 AI 客户端（基于共享 llm_client）"""
 
     def __init__(self, config: Dict[str, Any]):
-        """
-        初始化 AI 客户端
-
-        Args:
-            config: AI 配置字典
-                - MODEL: 模型标识（格式: provider/model_name）
-                - API_KEY: API 密钥
-                - API_BASE: API 基础 URL（可选）
-                - TEMPERATURE: 采样温度
-                - MAX_TOKENS: 最大生成 token 数
-                - TIMEOUT: 请求超时时间（秒）
-                - NUM_RETRIES: 重试次数（可选）
-                - FALLBACK_MODELS: 备用模型列表（可选）
-        """
         self.model = config.get("MODEL", "deepseek/deepseek-chat")
-        self.api_key = config.get("API_KEY") or os.environ.get("AI_API_KEY", "")
+        self.api_key = config.get("API_KEY", "")
         self.api_base = config.get("API_BASE", "")
         self.temperature = config.get("TEMPERATURE", 1.0)
         self.max_tokens = config.get("MAX_TOKENS", 5000)
@@ -39,83 +101,30 @@ class AIClient:
         self.num_retries = config.get("NUM_RETRIES", 2)
         self.fallback_models = config.get("FALLBACK_MODELS", [])
 
-    def chat(
-        self,
-        messages: List[Dict[str, str]],
-        **kwargs
-    ) -> str:
-        """
-        调用 AI 模型进行对话
-
-        Args:
-            messages: 消息列表，格式: [{"role": "system/user/assistant", "content": "..."}]
-            **kwargs: 额外参数，会覆盖默认配置
-
-        Returns:
-            str: AI 响应内容
-
-        Raises:
-            Exception: API 调用失败时抛出异常
-        """
-        # 构建请求参数
-        params = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": kwargs.get("temperature", self.temperature),
-            "timeout": kwargs.get("timeout", self.timeout),
-            "num_retries": kwargs.get("num_retries", self.num_retries),
-        }
-
-        # 添加 API Key
-        if self.api_key:
-            params["api_key"] = self.api_key
-
-        # 添加 API Base（如果配置了）
-        if self.api_base:
-            params["api_base"] = self.api_base
-
-        # 添加 max_tokens（如果配置了且不为 0）
-        max_tokens = kwargs.get("max_tokens", self.max_tokens)
-        if max_tokens and max_tokens > 0:
-            params["max_tokens"] = max_tokens
-
-        # 添加 fallback 模型（如果配置了）
-        if self.fallback_models:
-            params["fallbacks"] = self.fallback_models
-
-        # 合并其他额外参数
-        for key, value in kwargs.items():
-            if key not in params:
-                params[key] = value
-
-        # 调用 LiteLLM
-        response = completion(**params)
-
-        # 提取响应内容
-        # 某些模型/提供商返回 list（内容块）而非 str，统一转为 str
-        content = response.choices[0].message.content
-        if isinstance(content, list):
-            content = "\n".join(
-                item.get("text", str(item)) if isinstance(item, dict) else str(item)
-                for item in content
+    def chat(self, messages: List[Dict[str, str]], **kwargs) -> str:
+        llm_call = _get_shared_llm_callable()
+        if not llm_call:
+            raise RuntimeError(
+                "共享 llm_client 不可用: "
+                f"{_SHARED_LLM_IMPORT_ERROR or 'unknown import error'}"
             )
-        return content or ""
+
+        system_prompt, prompt = _messages_to_prompt(messages)
+        if not prompt:
+            return ""
+
+        return llm_call(
+            prompt,
+            system_prompt=system_prompt or None,
+            model=kwargs.get("model", self.model),
+            temperature=kwargs.get("temperature", self.temperature),
+            base_url=kwargs.get("base_url", self.api_base),
+            api_key=kwargs.get("api_key", self.api_key),
+            timeout=kwargs.get("timeout", self.timeout),
+        )
 
     def validate_config(self) -> tuple[bool, str]:
-        """
-        验证配置是否有效
-
-        Returns:
-            tuple: (是否有效, 错误信息)
-        """
-        if not self.model:
-            return False, "未配置 AI 模型（model）"
-
-        if not self.api_key:
-            return False, "未配置 AI API Key，请在 config.yaml 或环境变量 AI_API_KEY 中设置"
-
-        # 验证模型格式（应该包含 provider/model）
-        if "/" not in self.model:
-            return False, f"模型格式错误: {self.model}，应为 'provider/model' 格式（如 'deepseek/deepseek-chat'）"
-
+        llm_call = _get_shared_llm_callable()
+        if not llm_call:
+            return False, f"共享 llm_client 不可用：{_SHARED_LLM_IMPORT_ERROR or 'unknown import error'}"
         return True, ""

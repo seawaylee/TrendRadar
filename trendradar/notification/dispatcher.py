@@ -264,7 +264,7 @@ class NotificationDispatcher:
             )
 
         # 飞书
-        if self.config.get("FEISHU_WEBHOOK_URL"):
+        if self.config.get("FEISHU_WEBHOOK_URL") or (self.config.get("FEISHU_OPENCLAW", {}) or {}).get("ENABLED"):
             results["feishu"] = self._send_feishu(
                 report_data, report_type, update_info, proxy_url, mode, rss_items, rss_new_items,
                 ai_analysis, display_regions, standalone_data
@@ -403,6 +403,29 @@ class NotificationDispatcher:
             report_data, display_regions, rss_items, rss_new_items, ai_analysis, standalone_data
         )
 
+        openclaw_config = self.config.get("FEISHU_OPENCLAW", {}) or {}
+        if openclaw_config.get("ENABLED", False):
+            return send_to_feishu(
+                webhook_url=self.config.get("FEISHU_WEBHOOK_URL", ""),
+                report_data=rd,
+                report_type=report_type,
+                update_info=update_info,
+                proxy_url=proxy_url,
+                mode=mode,
+                account_label="",
+                batch_size=self.config.get("FEISHU_BATCH_SIZE", 29000),
+                batch_interval=self.config.get("BATCH_SEND_INTERVAL", 1.0),
+                split_content_func=self.split_content_func,
+                get_time_func=self.get_time_func,
+                rss_items=ri,
+                rss_new_items=rn,
+                ai_analysis=ai,
+                display_regions=display_regions or {},
+                standalone_data=sd,
+                digest_config=self.config.get("FEISHU_CARD_DIGEST", {}),
+                openclaw_config=openclaw_config,
+            )
+
         return self._send_to_multi_accounts(
             channel_name="飞书",
             config_value=self.config["FEISHU_WEBHOOK_URL"],
@@ -423,6 +446,8 @@ class NotificationDispatcher:
                 ai_analysis=ai,
                 display_regions=display_regions or {},
                 standalone_data=sd,
+                digest_config=self.config.get("FEISHU_CARD_DIGEST", {}),
+                openclaw_config=openclaw_config,
             ),
         )
 
@@ -797,4 +822,3 @@ class NotificationDispatcher:
             custom_smtp_port=self.config.get("EMAIL_SMTP_PORT", ""),
             get_time_func=self.get_time_func,
         )
-

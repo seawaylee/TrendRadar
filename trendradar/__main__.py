@@ -246,17 +246,32 @@ class NewsAnalyzer:
     def _init_storage_manager(self) -> None:
         """初始化存储管理器（使用 AppContext）"""
         # 获取数据保留天数（支持环境变量覆盖）
+        storage_config = self.ctx.config.setdefault("STORAGE", {})
+        local_config = storage_config.setdefault("LOCAL", {})
+        remote_config = storage_config.setdefault("REMOTE", {})
+
         env_retention = os.environ.get("STORAGE_RETENTION_DAYS", "").strip()
+        env_local_retention = os.environ.get("LOCAL_RETENTION_DAYS", "").strip()
+        env_remote_retention = os.environ.get("REMOTE_RETENTION_DAYS", "").strip()
+
         if env_retention:
-            # 环境变量覆盖配置
-            self.ctx.config["STORAGE"]["RETENTION_DAYS"] = int(env_retention)
+            retention_days = int(env_retention)
+            local_config["RETENTION_DAYS"] = retention_days
+            remote_config["RETENTION_DAYS"] = retention_days
+        if env_local_retention:
+            local_config["RETENTION_DAYS"] = int(env_local_retention)
+        if env_remote_retention:
+            remote_config["RETENTION_DAYS"] = int(env_remote_retention)
 
         self.storage_manager = self.ctx.get_storage_manager()
         print(f"存储后端: {self.storage_manager.backend_name}")
 
-        retention_days = self.ctx.config.get("STORAGE", {}).get("RETENTION_DAYS", 0)
-        if retention_days > 0:
-            print(f"数据保留天数: {retention_days} 天")
+        local_retention_days = local_config.get("RETENTION_DAYS", 0)
+        remote_retention_days = remote_config.get("RETENTION_DAYS", 0)
+        if local_retention_days > 0:
+            print(f"本地数据保留天数: {local_retention_days} 天")
+        if remote_retention_days > 0:
+            print(f"远程数据保留天数: {remote_retention_days} 天")
 
     def _detect_docker_environment(self) -> bool:
         """检测是否运行在 Docker 容器中"""
@@ -273,7 +288,11 @@ class NewsAnalyzer:
 
     def _should_open_browser(self) -> bool:
         """判断是否应该打开浏览器"""
-        return not self.is_github_actions and not self.is_docker_container
+        return (
+            bool(self.ctx.config.get("OPEN_BROWSER", False))
+            and not self.is_github_actions
+            and not self.is_docker_container
+        )
 
     def _setup_proxy(self) -> None:
         """设置代理配置"""
@@ -313,6 +332,7 @@ class NewsAnalyzer:
         return any(
             [
                 cfg["FEISHU_WEBHOOK_URL"],
+                (cfg.get("FEISHU_OPENCLAW", {}) or {}).get("ENABLED"),
                 cfg["DINGTALK_WEBHOOK_URL"],
                 cfg["WEWORK_WEBHOOK_URL"],
                 (cfg["TELEGRAM_BOT_TOKEN"] and cfg["TELEGRAM_CHAT_ID"]),

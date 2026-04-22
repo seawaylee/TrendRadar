@@ -5,6 +5,7 @@
 负责从 YAML 配置文件和环境变量加载配置。
 """
 
+import json
 import os
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -54,11 +55,13 @@ def _load_app_config(config_data: Dict) -> Dict:
     """加载应用配置"""
     app_config = config_data.get("app", {})
     advanced = config_data.get("advanced", {})
+    open_browser_env = _get_env_bool("OPEN_BROWSER")
     return {
         "VERSION_CHECK_URL": advanced.get("version_check_url", ""),
         "CONFIGS_VERSION_CHECK_URL": advanced.get("configs_version_check_url", ""),
         "SHOW_VERSION_UPDATE": app_config.get("show_version_update", True),
         "TIMEZONE": _get_env_str("TIMEZONE") or app_config.get("timezone", DEFAULT_TIMEZONE),
+        "OPEN_BROWSER": open_browser_env if open_browser_env is not None else app_config.get("open_browser", False),
         "DEBUG": _get_env_bool("DEBUG") if _get_env_bool("DEBUG") is not None else advanced.get("debug", False),
     }
 
@@ -397,13 +400,49 @@ def _load_storage_config(config_data: Dict) -> Dict:
     }
 
 
-def _load_webhook_config(config_data: Dict) -> Dict:
+def _resolve_config_reference_path(config_path: Optional[str], reference_path: str) -> Path:
+    path = Path(reference_path).expanduser()
+    if path.is_absolute() or not config_path:
+        return path
+
+    config_file = Path(config_path).expanduser().resolve()
+    config_dir = config_file.parent
+    if path.parts and path.parts[0] == config_dir.name:
+        return config_dir.parent / path
+    return config_dir / path
+
+
+def _load_json_dict(path: Path) -> Dict[str, Any]:
+    if not path.exists():
+        print(f"[配置] 评分文件不存在，使用默认评分: {path}")
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"[配置] 评分文件读取失败，使用默认评分: {path} ({exc})")
+        return {}
+    if not isinstance(payload, dict):
+        print(f"[配置] 评分文件格式错误，使用默认评分: {path}")
+        return {}
+    return payload
+
+
+def _load_webhook_config(config_data: Dict, *, config_path: Optional[str] = None) -> Dict:
     """加载 Webhook 配置"""
     notification = config_data.get("notification", {})
     channels = notification.get("channels", {})
 
     # 各渠道配置
     feishu = channels.get("feishu", {})
+    feishu_digest = feishu.get("card_digest", {})
+    feishu_digest_scoring_file = (
+        str(feishu_digest.get("scoring_file", "config/feishu_digest_scoring.json") or "").strip()
+        or "config/feishu_digest_scoring.json"
+    )
+    feishu_digest_scoring = _load_json_dict(
+        _resolve_config_reference_path(config_path, feishu_digest_scoring_file)
+    )
+    feishu_openclaw = feishu.get("openclaw", {})
     dingtalk = channels.get("dingtalk", {})
     wework = channels.get("wework", {})
     telegram = channels.get("telegram", {})
@@ -416,6 +455,26 @@ def _load_webhook_config(config_data: Dict) -> Dict:
     return {
         # 飞书
         "FEISHU_WEBHOOK_URL": _get_env_str("FEISHU_WEBHOOK_URL") or feishu.get("webhook_url", ""),
+        "FEISHU_CARD_DIGEST": {
+            "ENABLED": feishu_digest.get("enabled", False),
+            "TOP_K": feishu_digest.get("top_k", 10),
+            "HISTORY_DAYS": feishu_digest.get("history_days", 14),
+            "HISTORY_FILE": feishu_digest.get("history_file", "output/meta/feishu_digest_history.json"),
+            "TITLE": feishu_digest.get("title", "财经资讯"),
+            "SCORING_FILE": feishu_digest_scoring_file,
+            "SCORING": feishu_digest_scoring,
+            "IMPACT_SUMMARY": {
+                "ENABLED": ((feishu_digest.get("impact_summary", {}) or {}).get("enabled", False)),
+                "MAX_ITEMS": ((feishu_digest.get("impact_summary", {}) or {}).get("max_items", 8)),
+            },
+        },
+        "FEISHU_OPENCLAW": {
+            "ENABLED": feishu_openclaw.get("enabled", False),
+            "AGENT": feishu_openclaw.get("agent", ""),
+            "ACCOUNT": feishu_openclaw.get("account", ""),
+            "TARGET": feishu_openclaw.get("target", ""),
+            "OPENCLAW_BIN": feishu_openclaw.get("openclaw_bin", ""),
+        },
         # 钉钉
         "DINGTALK_WEBHOOK_URL": _get_env_str("DINGTALK_WEBHOOK_URL") or dingtalk.get("webhook_url", ""),
         # 企业微信
@@ -454,6 +513,9 @@ def _print_notification_sources(config: Dict) -> None:
         count = min(len(accounts), max_accounts)
         source = "环境变量" if os.environ.get("FEISHU_WEBHOOK_URL") else "配置文件"
         notification_sources.append(f"飞书({source}, {count}个账号)")
+    elif (config.get("FEISHU_OPENCLAW") or {}).get("ENABLED"):
+        agent = (config.get("FEISHU_OPENCLAW") or {}).get("AGENT") or (config.get("FEISHU_OPENCLAW") or {}).get("ACCOUNT") or "unknown"
+        notification_sources.append(f"飞书(OpenClaw, agent={agent})")
 
     if config["DINGTALK_WEBHOOK_URL"]:
         accounts = parse_multi_account_config(config["DINGTALK_WEBHOOK_URL"])
@@ -603,7 +665,7 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
     config["STORAGE"] = _load_storage_config(config_data)
 
     # Webhook 配置
-    config.update(_load_webhook_config(config_data))
+    config.update(_load_webhook_config(config_data, config_path=config_path))
 
     # 打印通知渠道配置来源
     _print_notification_sources(config)

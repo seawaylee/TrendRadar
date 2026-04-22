@@ -78,8 +78,9 @@ class AITranslator:
             result.error = "翻译功能未启用"
             return result
 
-        if not self.client.api_key:
-            result.error = "未配置 AI API Key"
+        valid, error = self.client.validate_config()
+        if not valid:
+            result.error = error
             return result
 
         if not text or not text.strip():
@@ -128,11 +129,12 @@ class AITranslator:
             batch_result.fail_count = len(texts)
             return batch_result
 
-        if not self.client.api_key:
+        valid, error = self.client.validate_config()
+        if not valid:
             for text in texts:
                 batch_result.results.append(TranslationResult(
                     original_text=text,
-                    error="未配置 AI API Key"
+                    error=error
                 ))
             batch_result.fail_count = len(texts)
             return batch_result

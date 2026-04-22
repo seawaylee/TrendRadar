@@ -1,0 +1,183 @@
+{
+  "minimum_score": 301,
+  "source_keywords": {
+    "official": [
+      "美联储",
+      "SEC",
+      "港交所",
+      "欧洲央行",
+      "英国央行",
+      "BIS",
+      "经济分析局",
+      "劳工统计局"
+    ],
+    "premium": [
+      "财联社",
+      "华尔街见闻",
+      "澎湃"
+    ],
+    "social": [
+      "微博",
+      "知乎",
+      "百度",
+      "bilibili",
+      "今日头条"
+    ]
+  },
+  "source_weights": {
+    "official": 120,
+    "premium": 80,
+    "social": 24,
+    "default": 40
+  },
+  "group_weights": {
+    "事件触发": 48,
+    "宏观政策": 56,
+    "通胀就业": 52,
+    "汇率债券": 50,
+    "大宗商品": 50,
+    "中港股市": 48,
+    "美股与波动率": 48,
+    "地缘与贸易": 46,
+    "资金线索": 38,
+    "核心公司": 36,
+    "财报": 34,
+    "监管": 34,
+    "指数与情绪": 26,
+    "板块异动": 22
+  },
+  "default_group_weight": 18,
+  "title_trigger_words": [
+    "降息",
+    "加息",
+    "利率",
+    "cpi",
+    "ppi",
+    "非农",
+    "财报",
+    "业绩",
+    "回购",
+    "减持",
+    "增持",
+    "停牌",
+    "复牌",
+    "处罚",
+    "立案",
+    "问询",
+    "违约",
+    "暴雷",
+    "制裁",
+    "关税",
+    "停火",
+    "谈判",
+    "出口管制",
+    "ipo",
+    "订单"
+  ],
+  "title_trigger_bonus_per_match": 8,
+  "market_priority_keywords": [
+    "a股",
+    "港股",
+    "美股",
+    "沪指",
+    "恒生",
+    "恒生科技",
+    "纳指",
+    "标普",
+    "道指",
+    "美联储",
+    "央行",
+    "利率",
+    "美债",
+    "收益率",
+    "美元",
+    "人民币",
+    "原油",
+    "黄金",
+    "白银",
+    "铜",
+    "vix",
+    "关税",
+    "停火",
+    "出口管制"
+  ],
+  "market_priority_bonus_per_match": 14,
+  "market_priority_source_bonus": {
+    "财联社": 12,
+    "华尔街见闻": 12
+  },
+  "low_signal_patterns": [
+    "earnings preview",
+    "what to expect",
+    "buy, sell, or hold",
+    "should you buy",
+    "worth watching",
+    "today in stocks",
+    "earnings call",
+    "conference call",
+    "earnings transcript",
+    "call transcript",
+    "call highlights",
+    "call summary",
+    "q1 2026 earnings call summary",
+    "ahead of earnings",
+    "stock target",
+    "price target",
+    "past 5 days",
+    "trades at just",
+    "after losing"
+  ],
+  "low_signal_penalty_per_match": 140,
+  "rank_bonus_base": 24,
+  "section_count_bonus_cap": 10,
+  "section_count_bonus_per_item": 4,
+  "title_count_bonus_cap": 5,
+  "title_count_bonus_per_item": 6,
+  "section_percentage_bonus_multiplier": 20,
+  "is_new_bonus": 30,
+  "rss_bonus": 20,
+  "focus_constituents": {
+    "enabled": true,
+    "top_k": 10,
+    "bonus_per_match": 48,
+    "cache_hours": 12,
+    "sources": [
+      {
+        "type": "invesco_qqq",
+        "top_k": 10,
+        "bonus_per_match": 48
+      },
+      {
+        "type": "ssga_spy_index",
+        "top_k": 10,
+        "bonus_per_match": 48
+      },
+      {
+        "type": "eastmoney_us_china_board",
+        "top_k": 20,
+        "bonus_per_match": 28,
+        "min_market_cap_usd": 5000000000
+      },
+      {
+        "type": "eastmoney_us_famous_board",
+        "top_k": 50,
+        "bonus_per_match": 18
+      }
+    ],
+    "non_focus_penalty": 180,
+    "non_focus_sources": [
+      "雅虎财经",
+      "Yahoo"
+    ],
+    "non_focus_exempt_groups": [
+      "宏观政策",
+      "通胀就业",
+      "汇率债券",
+      "大宗商品",
+      "地缘与贸易",
+      "指数与情绪",
+      "美股与波动率",
+      "中港股市"
+    ]
+  }
+}

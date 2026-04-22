@@ -31,6 +31,7 @@ import requests
 
 from .batch import add_batch_headers, get_max_batch_header_size
 from .formatters import convert_markdown_to_mrkdwn, strip_markdown
+from .feishu_digest import send_feishu_digest, send_openclaw_digest
 
 
 def _render_ai_analysis(ai_analysis: Any, channel: str) -> str:
@@ -92,6 +93,8 @@ def send_to_feishu(
     ai_analysis: Any = None,
     display_regions: Optional[Dict] = None,
     standalone_data: Optional[Dict] = None,
+    digest_config: Optional[Dict[str, Any]] = None,
+    openclaw_config: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """
     发送到飞书（支持分批发送，支持热榜+RSS合并+独立展示区）
@@ -121,6 +124,27 @@ def send_to_feishu(
 
     # 日志前缀
     log_prefix = f"飞书{account_label}" if account_label else "飞书"
+
+    if digest_config and digest_config.get("ENABLED", False) and openclaw_config and openclaw_config.get("ENABLED", False):
+        return send_openclaw_digest(
+            report_data=report_data,
+            rss_items=rss_items,
+            openclaw_config=openclaw_config,
+            digest_config=digest_config,
+            get_time_func=get_time_func,
+            account_label=account_label,
+        )
+
+    if digest_config and digest_config.get("ENABLED", False):
+        return send_feishu_digest(
+            webhook_url=webhook_url,
+            report_data=report_data,
+            rss_items=rss_items,
+            proxy_url=proxy_url,
+            get_time_func=get_time_func,
+            digest_config=digest_config,
+            account_label=account_label,
+        )
 
     # 渲染 AI 分析内容（如果有）
     ai_content = None

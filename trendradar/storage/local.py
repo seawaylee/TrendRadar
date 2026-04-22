@@ -412,7 +412,10 @@ class LocalStorageBackend(SQLiteStorageMixin, StorageBackend):
             return 0
 
         deleted_count = 0
+        timezone = pytz.timezone(self.timezone)
         cutoff_date = self._get_configured_time() - timedelta(days=retention_days)
+        if cutoff_date.tzinfo is None:
+            cutoff_date = timezone.localize(cutoff_date)
 
         def parse_date_from_name(name: str) -> Optional[datetime]:
             """从文件名或目录名解析日期 (ISO 格式: YYYY-MM-DD)"""
@@ -421,12 +424,11 @@ class LocalStorageBackend(SQLiteStorageMixin, StorageBackend):
             try:
                 date_match = re.match(r'(\d{4})-(\d{2})-(\d{2})', name)
                 if date_match:
-                    return datetime(
+                    return timezone.localize(datetime(
                         int(date_match.group(1)),
                         int(date_match.group(2)),
                         int(date_match.group(3)),
-                        tzinfo=pytz.timezone(self.timezone)
-                    )
+                    ))
             except Exception:
                 pass
             return None
@@ -479,6 +481,26 @@ class LocalStorageBackend(SQLiteStorageMixin, StorageBackend):
                             print(f"[本地存储] 清理过期数据: {snapshot_type}/{date_folder.name}")
                         except Exception as e:
                             print(f"[本地存储] 删除目录失败 {date_folder}: {e}")
+
+            # 清理元数据文件 (meta/)
+            meta_dir = self.data_dir / "meta"
+            if meta_dir.exists():
+                for meta_file in meta_dir.iterdir():
+                    if not meta_file.is_file() or meta_file.name.startswith('.'):
+                        continue
+
+                    try:
+                        modified_at = datetime.fromtimestamp(meta_file.stat().st_mtime, tz=timezone)
+                    except Exception:
+                        continue
+
+                    if modified_at < cutoff_date:
+                        try:
+                            meta_file.unlink()
+                            deleted_count += 1
+                            print(f"[本地存储] 清理过期数据: meta/{meta_file.name}")
+                        except Exception as e:
+                            print(f"[本地存储] 删除文件失败 {meta_file}: {e}")
 
             if deleted_count > 0:
                 print(f"[本地存储] 共清理 {deleted_count} 个过期文件/目录")
