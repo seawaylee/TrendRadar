@@ -1159,7 +1159,8 @@ def select_digest_items(
     adaptive = adaptive_config if isinstance(adaptive_config, dict) else {}
     adaptive_enabled = bool(adaptive.get("enabled", False))
     adaptive_when_empty = bool(adaptive.get("when_empty", True))
-    if selected or not adaptive_enabled or not adaptive_when_empty or not unsent_items:
+    adaptive_when_under_target = bool(adaptive.get("when_under_target", False))
+    if not adaptive_enabled or not unsent_items:
         return selected
 
     try:
@@ -1172,13 +1173,22 @@ def select_digest_items(
         floor = 0
 
     target_items = max(1, min(target_items, top_k if top_k > 0 else len(unsent_items), len(unsent_items)))
+    selected_count = len(selected)
+    should_relax = (selected_count == 0 and adaptive_when_empty) or (
+        selected_count < target_items and adaptive_when_under_target
+    )
+    if not should_relax:
+        return selected
+
     relaxed_min_score = max(floor, int(unsent_items[target_items - 1].get("score", 0) or 0))
     if relaxed_min_score < int(min_score or 0):
+        reason = "未命中" if selected_count == 0 else f"仅命中 {selected_count} 条"
         print(
-            f"[飞书摘要] 固定门槛 {int(min_score or 0)} 未命中，"
+            f"[飞书摘要] 固定门槛 {int(min_score or 0)} {reason}，"
             f"降至自适应门槛 {relaxed_min_score}（目标 {target_items} 条）"
         )
 
+    selected = []
     for item in unsent_items:
         if int(item.get("score", 0) or 0) < relaxed_min_score:
             continue

@@ -3,6 +3,7 @@
   "adaptive_min_score": {
     "enabled": true,
     "when_empty": true,
+    "when_under_target": true,
     "target_items": 10,
     "floor": 0
   },

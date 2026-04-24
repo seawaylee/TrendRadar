@@ -170,6 +170,32 @@ class FeishuDigestTests(unittest.TestCase):
             ["候选一", "候选二", "候选三", "候选四", "候选五"],
         )
 
+    def test_select_digest_items_relaxes_threshold_when_strict_filter_is_under_target(self):
+        candidates = [
+            {"title": "严格保留", "fingerprint": "a", "score": 320},
+            {"title": "候选二", "fingerprint": "b", "score": 289},
+            {"title": "候选三", "fingerprint": "c", "score": 281},
+            {"title": "候选四", "fingerprint": "d", "score": 274},
+        ]
+
+        selected = select_digest_items(
+            candidates,
+            top_k=10,
+            min_score=301,
+            adaptive_config={
+                "enabled": True,
+                "when_empty": True,
+                "when_under_target": True,
+                "target_items": 4,
+                "floor": 150,
+            },
+        )
+
+        self.assertEqual(
+            [item["title"] for item in selected],
+            ["严格保留", "候选二", "候选三", "候选四"],
+        )
+
     def test_load_digest_history_handles_naive_timestamps_with_aware_now(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             history_path = Path(tmpdir) / "digest_history.json"
