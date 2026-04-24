@@ -1,5 +1,11 @@
 {
   "minimum_score": 301,
+  "adaptive_min_score": {
+    "enabled": true,
+    "when_empty": true,
+    "target_items": 5,
+    "floor": 0
+  },
   "source_keywords": {
     "official": [
       "美联储",

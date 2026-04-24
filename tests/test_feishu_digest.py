@@ -141,6 +141,35 @@ class FeishuDigestTests(unittest.TestCase):
 
         self.assertEqual([item["title"] for item in selected], ["高分消息", "临界消息"])
 
+    def test_select_digest_items_relaxes_threshold_when_strict_filter_would_hide_everything(self):
+        candidates = [
+            {"title": "已发送高分", "fingerprint": "sent", "score": 330},
+            {"title": "候选一", "fingerprint": "a", "score": 286},
+            {"title": "候选二", "fingerprint": "b", "score": 284},
+            {"title": "候选三", "fingerprint": "c", "score": 278},
+            {"title": "候选四", "fingerprint": "d", "score": 267},
+            {"title": "候选五", "fingerprint": "e", "score": 261},
+            {"title": "较低分", "fingerprint": "f", "score": 180},
+        ]
+
+        selected = select_digest_items(
+            candidates,
+            top_k=10,
+            sent_history={"sent": "2026-04-24T08:16:52+08:00"},
+            min_score=301,
+            adaptive_config={
+                "enabled": True,
+                "when_empty": True,
+                "target_items": 5,
+                "floor": 150,
+            },
+        )
+
+        self.assertEqual(
+            [item["title"] for item in selected],
+            ["候选一", "候选二", "候选三", "候选四", "候选五"],
+        )
+
     def test_load_digest_history_handles_naive_timestamps_with_aware_now(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             history_path = Path(tmpdir) / "digest_history.json"

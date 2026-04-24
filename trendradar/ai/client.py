@@ -101,6 +101,14 @@ class AIClient:
         self.num_retries = config.get("NUM_RETRIES", 2)
         self.fallback_models = config.get("FALLBACK_MODELS", [])
 
+    @staticmethod
+    def _has_explicit_override(value: Any) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, str):
+            return bool(value.strip())
+        return True
+
     def chat(self, messages: List[Dict[str, str]], **kwargs) -> str:
         llm_call = _get_shared_llm_callable()
         if not llm_call:
@@ -113,14 +121,40 @@ class AIClient:
         if not prompt:
             return ""
 
+        call_kwargs = {
+            "system_prompt": system_prompt or None,
+            "temperature": kwargs.get("temperature", self.temperature),
+            "timeout": kwargs.get("timeout", self.timeout),
+        }
+
+        # 默认不向共享 llm_client 透传 legacy provider 参数，
+        # 让其内部 provider/fallback 链路接管路由决策。
+        direct_mode = any(
+            self._has_explicit_override(value)
+            for value in (
+                kwargs.get("model"),
+                kwargs.get("base_url"),
+                kwargs.get("api_key"),
+                kwargs.get("reasoning_effort"),
+                self.api_base,
+                self.api_key,
+            )
+        )
+        if direct_mode:
+            call_kwargs.update(
+                {
+                    "model": kwargs.get("model", self.model),
+                    "base_url": kwargs.get("base_url", self.api_base),
+                    "api_key": kwargs.get("api_key", self.api_key),
+                }
+            )
+            reasoning_effort = kwargs.get("reasoning_effort")
+            if reasoning_effort is not None:
+                call_kwargs["reasoning_effort"] = reasoning_effort
+
         return llm_call(
             prompt,
-            system_prompt=system_prompt or None,
-            model=kwargs.get("model", self.model),
-            temperature=kwargs.get("temperature", self.temperature),
-            base_url=kwargs.get("base_url", self.api_base),
-            api_key=kwargs.get("api_key", self.api_key),
-            timeout=kwargs.get("timeout", self.timeout),
+            **call_kwargs,
         )
 
     def validate_config(self) -> tuple[bool, str]:

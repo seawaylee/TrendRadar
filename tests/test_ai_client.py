@@ -6,6 +6,38 @@ from trendradar.ai.client import AIClient
 
 class AIClientTests(unittest.TestCase):
     @patch("trendradar.ai.client._get_shared_llm_callable")
+    def test_chat_uses_shared_llm_fallback_chain_by_default(self, mock_get_shared_llm_callable):
+        llm_call = Mock(return_value="LLM OK")
+        mock_get_shared_llm_callable.return_value = llm_call
+
+        client = AIClient(
+            {
+                "MODEL": "deepseek/deepseek-chat",
+                "API_KEY": "",
+                "API_BASE": "",
+                "TEMPERATURE": 0.4,
+                "TIMEOUT": 30,
+            }
+        )
+
+        response = client.chat(
+            [
+                {"role": "system", "content": "你是财经助手"},
+                {"role": "user", "content": "请总结今天市场风险"},
+            ],
+            temperature=0.1,
+            timeout=60,
+        )
+
+        self.assertEqual(response, "LLM OK")
+        llm_call.assert_called_once_with(
+            "请总结今天市场风险",
+            system_prompt="你是财经助手",
+            temperature=0.1,
+            timeout=60,
+        )
+
+    @patch("trendradar.ai.client._get_shared_llm_callable")
     def test_chat_uses_shared_llm_client(self, mock_get_shared_llm_callable):
         llm_call = Mock(return_value="LLM OK")
         mock_get_shared_llm_callable.return_value = llm_call

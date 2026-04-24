@@ -151,6 +151,12 @@ LOW_SIGNAL_PATTERNS = (
 
 DEFAULT_SCORING_CONFIG: Dict[str, Any] = {
     "minimum_score": 0,
+    "adaptive_min_score": {
+        "enabled": False,
+        "when_empty": True,
+        "target_items": 5,
+        "floor": 0,
+    },
     "source_keywords": {
         "official": list(OFFICIAL_SOURCE_KEYWORDS),
         "premium": list(PREMIUM_SOURCE_KEYWORDS),
@@ -1122,6 +1128,7 @@ def select_digest_items(
     top_k: int = 10,
     sent_history: Optional[Dict[str, str]] = None,
     min_score: int = 0,
+    adaptive_config: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """选出摘要卡片需要展示的 top N 唯一消息。"""
     sent_history = sent_history or {}
@@ -1140,11 +1147,40 @@ def select_digest_items(
         key=lambda item: (-int(item.get("score", 0)), item.get("title", "")),
     )
 
+    unsent_items = [item for item in ordered if item["fingerprint"] not in sent_history]
     selected: List[Dict[str, Any]] = []
-    for item in ordered:
-        if item["fingerprint"] in sent_history:
-            continue
+    for item in unsent_items:
         if int(item.get("score", 0) or 0) < int(min_score or 0):
+            continue
+        selected.append(item)
+        if len(selected) >= top_k:
+            break
+
+    adaptive = adaptive_config if isinstance(adaptive_config, dict) else {}
+    adaptive_enabled = bool(adaptive.get("enabled", False))
+    adaptive_when_empty = bool(adaptive.get("when_empty", True))
+    if selected or not adaptive_enabled or not adaptive_when_empty or not unsent_items:
+        return selected
+
+    try:
+        target_items = int(adaptive.get("target_items", 5) or 5)
+    except (TypeError, ValueError):
+        target_items = 5
+    try:
+        floor = int(adaptive.get("floor", 0) or 0)
+    except (TypeError, ValueError):
+        floor = 0
+
+    target_items = max(1, min(target_items, top_k if top_k > 0 else len(unsent_items), len(unsent_items)))
+    relaxed_min_score = max(floor, int(unsent_items[target_items - 1].get("score", 0) or 0))
+    if relaxed_min_score < int(min_score or 0):
+        print(
+            f"[飞书摘要] 固定门槛 {int(min_score or 0)} 未命中，"
+            f"降至自适应门槛 {relaxed_min_score}（目标 {target_items} 条）"
+        )
+
+    for item in unsent_items:
+        if int(item.get("score", 0) or 0) < relaxed_min_score:
             continue
         selected.append(item)
         if len(selected) >= top_k:
@@ -1557,6 +1593,7 @@ def send_feishu_digest(
         top_k=top_k,
         sent_history=sent_history,
         min_score=_config_int(scoring_config, "minimum_score", 0),
+        adaptive_config=scoring_config.get("adaptive_min_score"),
     )
 
     log_prefix = f"飞书{account_label}" if account_label else "飞书"
@@ -1653,6 +1690,7 @@ def send_openclaw_digest(
         top_k=top_k,
         sent_history=sent_history,
         min_score=_config_int(scoring_config, "minimum_score", 0),
+        adaptive_config=scoring_config.get("adaptive_min_score"),
     )
     if not items:
         print(f"{log_prefix}摘要卡片跳过：没有新的高优先级消息")
