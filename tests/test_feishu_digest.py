@@ -443,6 +443,41 @@ class FeishuDigestTests(unittest.TestCase):
         self.assertIn("北京时间 04-22 01:10", card_json)
         self.assertNotIn("[13:20 ~ 13:35]", card_json)
 
+    def test_build_openclaw_card_json_orders_items_by_beijing_time_desc(self):
+        card_json = build_openclaw_card_json(
+            items=[
+                {
+                    "title": "07点更高分",
+                    "source_name": "财联社热门",
+                    "time_display": "07:00",
+                    "url": "https://example.com/a",
+                    "group": "事件触发",
+                    "score": 330,
+                },
+                {
+                    "title": "09点次高分",
+                    "source_name": "华尔街见闻",
+                    "time_display": "09:00",
+                    "url": "https://example.com/b",
+                    "group": "宏观政策",
+                    "score": 320,
+                },
+                {
+                    "title": "08点普通分",
+                    "source_name": "雅虎财经",
+                    "time_display": "08:00",
+                    "url": "https://example.com/c",
+                    "group": "大宗商品",
+                    "score": 310,
+                },
+            ],
+            now=datetime.fromisoformat("2026-04-22T22:00:00+08:00"),
+            title_prefix="财经资讯",
+        )
+
+        self.assertLess(card_json.index("09点次高分"), card_json.index("08点普通分"))
+        self.assertLess(card_json.index("08点普通分"), card_json.index("07点更高分"))
+
     def test_build_openclaw_card_json_normalizes_impact_summary_to_numbered_lines(self):
         card_json = build_openclaw_card_json(
             items=[

@@ -1244,6 +1244,24 @@ def _candidate_event_time(candidate: Dict[str, Any], reference_now: datetime) ->
     return None
 
 
+def _sort_digest_items_by_beijing_time(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    reference_now = datetime.now(timezone(timedelta(hours=8)))
+
+    def sort_key(item: Dict[str, Any]) -> tuple:
+        event_time = _candidate_event_time(item, reference_now)
+        if event_time is None:
+            event_key = float("inf")
+        else:
+            event_key = -_align_datetime_for_compare(event_time, reference_now).timestamp()
+        return (
+            event_key,
+            -int(item.get("score", 0) or 0),
+            str(item.get("title", "") or ""),
+        )
+
+    return sorted(items, key=sort_key)
+
+
 def select_impact_summary_items(
     candidates: List[Dict[str, Any]],
     *,
@@ -1487,12 +1505,13 @@ def build_digest_payload(
     label = _digest_label(now)
     title = f"{title_prefix}{label}"
     normalized_summary = _normalize_impact_summary(impact_summary)
+    ordered_items = _sort_digest_items_by_beijing_time(items)
 
     if "www.feishu.cn" in webhook_url:
         lines = [f"【{title}】", ""]
         if normalized_summary:
             lines.extend(["两次推送间重大影响：", normalized_summary, ""])
-        for idx, item in enumerate(items, 1):
+        for idx, item in enumerate(ordered_items, 1):
             lines.append(f"{idx}. {item['title']}")
             meta_parts = [item.get("source_name", ""), item.get("group", ""), _digest_item_time_display(item, now)]
             meta = " · ".join(part for part in meta_parts if part)
@@ -1506,7 +1525,7 @@ def build_digest_payload(
             "content": {"text": "\n".join(lines).strip()},
         }
 
-    elements = _build_card_elements(items, now)
+    elements = _build_card_elements(ordered_items, now)
     if normalized_summary:
         elements.insert(0, {"tag": "markdown", "content": f"**两次推送间重大影响**\n{normalized_summary}"})
 
@@ -1536,6 +1555,7 @@ def build_openclaw_card_json(
     """构造 OpenClaw 直发飞书所需的 card JSON。"""
     label = _digest_label(now)
     normalized_summary = _normalize_impact_summary(impact_summary)
+    ordered_items = _sort_digest_items_by_beijing_time(items)
     card = {
         "header": {
             "title": {"tag": "plain_text", "content": f"{title_prefix}{label}"},
@@ -1556,7 +1576,7 @@ def build_openclaw_card_json(
         )
         card["elements"].append({"tag": "hr"})
 
-    for idx, item in enumerate(items, 1):
+    for idx, item in enumerate(ordered_items, 1):
         title = item["title"]
         if item.get("url"):
             title = f"[{title}]({item['url']})"
